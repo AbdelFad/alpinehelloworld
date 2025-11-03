@@ -21,7 +21,7 @@ pipeline{
                 script {
                     sh '''
                         docker run -d --name ${IMAGE_NAME} -p 80:5000 -e PORT=5000 fadaaz/${IMAGE_NAME}:${IMAGE_TAG}
-                        sleep 5
+                        sleep 3600
                     '''
                 }
             }
@@ -53,7 +53,7 @@ pipeline{
             }
             agent any
             environment {
-                HEROKU_API_KEY = credentials('heroku_api_key')
+                DIGITALOCEAN_API_KEY = credentials('alpinehelloworld_key')
             }
             steps {
                 script {
@@ -72,7 +72,7 @@ pipeline{
             }
             agent any
             environment {
-                HEROKU_API_KEY = credentials('heroku_api_key')
+               DIGITALOCEAN_API_KEY = credentials('alpinehelloworld_key')
             }
             steps {
                 script {
