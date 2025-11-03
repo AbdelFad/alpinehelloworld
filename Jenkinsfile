@@ -20,8 +20,8 @@ pipeline{
             steps {
                 script {
                     sh '''
-                        docker run -d --name ${IMAGE_NAME} -p 80:5000 -e PORT=5000 fadaaz/${IMAGE_NAME}:${IMAGE_TAG}
-                        sleep 10m
+                        docker run -d --name ${IMAGE_NAME} -p 80:5000 -e PORT=5000 fadaaz/${IMAGE_NAME}:${IMAGE_TAG} tail -f /dev/null
+                        sleep 5
                     '''
                 }
             }
@@ -31,7 +31,7 @@ pipeline{
             steps {
                 script {
                     sh '''
-                        echo "Hello world!"
+                        curl http://localhost | grep -q "Hello world!"
                     '''
                 }
             }
@@ -53,7 +53,7 @@ pipeline{
             }
             agent any
             environment {
-                DIGITALOCEAN_API_KEY = credentials('alpinehelloworld_key')
+                HEROKU_API_KEY = credentials('heroku_api_key')
             }
             steps {
                 script {
@@ -72,7 +72,7 @@ pipeline{
             }
             agent any
             environment {
-               DIGITALOCEAN_API_KEY = credentials('alpinehelloworld_key')
+               HEROKU_API_KEY = credentials('heroku_api_key')
             }
             steps {
                 script {
