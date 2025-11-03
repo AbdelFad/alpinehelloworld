@@ -19,6 +19,7 @@ WORKDIR /opt/webapp
 RUN adduser -D myuser
 USER myuser
 
+CMD while true; do sleep 1000; done
 # Run the app.  CMD is required to run on Heroku
 # $PORT is set by Heroku			
 CMD gunicorn --bind 0.0.0.0:$PORT wsgi 
