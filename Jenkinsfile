@@ -1,9 +1,18 @@
 pipeline {
      environment {
+       ID_DOCKER = "${ID_DOCKER_PARAMS}"
        IMAGE_NAME = "alpinehelloworld"
        IMAGE_TAG = "latest"
-       STAGING = "fadaaz-staging"
-       PRODUCTION = "fadaaz-production"
+       // PORT_EXPOSED = "80" à paraméter dans le job obligatoirement
+       APP_NAME = "fadaz"
+       STG_API_ENDPOINT = "http://192.168.56.30:1993"
+       STG_APP_ENDPOINT = "http://192.168.56.30:80"
+       PROD_API_ENDPOINT = "http://192.168.56.30:1993"
+       PROD_APP_ENDPOINT = "http://192.168.56.30:80"
+       INTERNAL_PORT = "5000"
+       EXTERNAL_PORT = "${PORT_EXPOSED}"
+       CONTAINER_IMAGE = "${ID_DOCKER}/${IMAGE_NAME}:${IMAGE_TAG}"
+
      }
      agent none
      stages {
@@ -11,7 +20,7 @@ pipeline {
              agent any
              steps {
                 script {
-                  sh 'docker build -t fadaaz/$IMAGE_NAME:$IMAGE_TAG .'
+                  sh 'docker build -t ${ID_DOCKER}/$IMAGE_NAME:$IMAGE_TAG .'
                 }
              }
         }
@@ -20,7 +29,9 @@ pipeline {
             steps {
                script {
                  sh '''
-                    docker run --name $IMAGE_NAME -d -p 80:5000 -e PORT=5000 fadaaz/$IMAGE_NAME:$IMAGE_TAG tail -f /dev/null
+                    echo "Clean Environment"
+                    docker rm -f $IMAGE_NAME || echo "container does not exist"
+                    docker run --name $IMAGE_NAME -d -p ${PORT_EXPOSED}:${INTERNAL_PORT} -e PORT=${INTERNAL_PORT} ${ID_DOCKER}/$IMAGE_NAME:$IMAGE_TAG tail -f /dev/null
                     sleep 5
                  '''
                }
@@ -47,43 +58,69 @@ pipeline {
              }
           }
      }
-     stage('Push image in staging and deploy it') {
-       when {
-              expression { GIT_BRANCH == 'origin/master' }
-            }
+
+      stage('Save Artefact') {
+          agent any
+          steps {
+             script {
+               sh '''
+                 docker save  ${ID_DOCKER}/$IMAGE_NAME:$IMAGE_TAG > /tmp/alpinehelloworld.tar                 
+               '''
+             }
+          }
+     }          
+          
+     stage ('Login and Push Image on docker hub') {
+          agent any
+        environment {
+           DOCKERHUB_PASSWORD  = credentials('dockerhub-credentials')
+        }            
+          steps {
+             script {
+               sh '''
+                   echo $DOCKERHUB_PASSWORD_PSW | docker login -u $ID_DOCKER --password-stdin
+                   docker push ${ID_DOCKER}/$IMAGE_NAME:$IMAGE_TAG
+               '''
+             }
+          }
+      }    
+     
+     stage('STAGING - Deploy app') {
       agent any
-      environment {
-          HEROKU_API_KEY = credentials('heroku_api_key')
-      }  
       steps {
           script {
-            sh '''
-              heroku container:login
-              heroku create $STAGING || echo "project already exist"
-              heroku container:push web --app $STAGING
-              heroku container:release  web --app $STAGING
-            '''
+            sh """
+              echo  {\\"your_name\\":\\"${APP_NAME}\\",\\"container_image\\":\\"${CONTAINER_IMAGE}\\", \\"external_port\\":\\"${EXTERNAL_PORT}\\", \\"internal_port\\":\\"${INTERNAL_PORT}\\"}  > data.json 
+              curl -X POST http://${STG_API_ENDPOINT}/staging -H 'Content-Type: application/json'  --data-binary @data.json 
+            """
           }
         }
      }
-     stage('Push image in production and deploy it') {
+
+
+
+     stage('PRODUCTION - Deploy app') {
        when {
               expression { GIT_BRANCH == 'origin/master' }
             }
       agent any
-      environment {
-          HEROKU_API_KEY = credentials('heroku_api_key')
-      }  
+
       steps {
           script {
-            sh '''
-              heroku container:login
-              heroku create $PRODUCTION || echo "project already exist"
-              heroku container:push web --app $PRODUCTION
-              heroku container:release  web --app $PRODUCTION
-            '''
+            sh """
+               curl -X POST http://${PROD_API_ENDPOINT}/prod -H 'Content-Type: application/json' -d '{"your_name":"${APP_NAME}","container_image":"${CONTAINER_IMAGE}", "external_port":"${EXTERNAL_PORT}", "internal_port":"${INTERNAL_PORT}"}'
+               """
           }
         }
      }
   }
+     
+  post {
+       success {
+         slackSend (color: '#00FF00', message: "FADAZ - SUCCESSFUL: Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]' (${env.BUILD_URL}) - PROD URL => http://${PROD_APP_ENDPOINT} , STAGING URL => http://${STG_APP_ENDPOINT}")
+         }
+      failure {
+            slackSend (color: '#FF0000', message: "FADAZ - FAILED: Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]' (${env.BUILD_URL})")
+          }   
+    }     
 }
